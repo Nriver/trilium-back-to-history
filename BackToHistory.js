@@ -4,13 +4,15 @@ https://github.com/SiriusXT/trilium-back-to-history
 version:0.3
 */
 var bth = new Array();
-bth["historyNoteId"] = "KaRRn1daBqak"; // Fill in the note id used to store history progress
+bth["historyNoteId"] = ""; // Fill in the note id used to store history progress. If it is empty string, localstorage will be used to store history instead of a note
 bth["autoJump"] = 1; //1: Automatically jump   0: Manual jump
 bth["maxHistory"] = 100; // Maximum number of saved histories 
 
 if (bth["historyNoteId"] == "") {
-    api.showMessage("Fill in the note id used to store history progress");
-    return
+    // Use local storage if historyNoteId is empty
+    bth["history"] = JSON.parse(localStorage.getItem("backToHistory")) || [];
+} else {
+    bth["history"] = [];
 }
 bth['preHeight'] = 0;
 bth["fnotetype"] = 0;
@@ -55,10 +57,15 @@ function saveHis() {
     if (true) {
         clearTimeout(bth["saveHisTimer"]);
         bth["saveHisTimer"] = setTimeout((historyNoteId, history) => {
-            api.runAsyncOnBackendWithManualTransactionHandling(async (historyNoteId, history) => {
-                const historyNote = await api.getNote(historyNoteId);
-                historyNote.setContent(JSON.stringify(history));
-            }, [historyNoteId, history]);
+            if (bth["historyNoteId"]=="") {
+                // Save history to local storage
+                localStorage.setItem("backToHistory", JSON.stringify(bth["history"]));
+            } else {
+                api.runAsyncOnBackendWithManualTransactionHandling(async (historyNoteId, history) => {
+                        const historyNote = await api.getNote(historyNoteId);
+                        historyNote.setContent(JSON.stringify(history));
+                }, [historyNoteId, history]);
+            }
         }, 1000, bth["historyNoteId"], bth["history"]);
     }
 }
@@ -75,11 +82,17 @@ function reload() {
         if (!$("div.component.note-split:not(.hidden-ext) div.ribbon-tab-title").hasClass('back-to-history')) {
             $("div.component.note-split:not(.hidden-ext) .ribbon-tab-title").last().after(`<div class="back-to-history ribbon-tab-spacer" style="display:none;"></div>
 <div  class="back-to-history ribbon-tab-title" style="display:none;" >
-	<span  class="back-to-history ribbon-tab-title-icon bx bx-down-arrow-alt" style="display:none;"></span>
+    <span  class="back-to-history ribbon-tab-title-icon bx bx-down-arrow-alt" style="display:none;"></span>
 </div>`);
             $('div.component.note-split:not(.hidden-ext) div.back-to-history.ribbon-tab-title').off("click", bth['scrollTo']);
             $('div.component.note-split:not(.hidden-ext) div.back-to-history.ribbon-tab-title').on("click", bth['scrollTo']);
         }
+        
+        if (bth["historyNoteId"] == "") {
+            // Read history from local storage
+            bth["history"] = JSON.parse(localStorage.getItem("backToHistory")) || [];
+        }
+        
         if (bth["history"].some(function (element) { return element.id === bth["noteId"]; }) && bth["history"].filter(function (obj) { return obj.id === bth["noteId"]; }).map(function (obj) { return obj.ratio; })[0] != "NaN") {
             bth["lastRatio"] = Number(bth["history"].filter(function (obj) { return obj.id === bth["noteId"]; }).map(function (obj) { return obj.ratio; })[0]); // When refreshing, it has to be fixed, otherwise it will change when scrolling.
             $("div.component.note-split:not(.hidden-ext) .back-to-history").css('display', 'block');
@@ -111,6 +124,12 @@ function reload() {
             while (bth["history"].length > bth["maxHistory"]) {
                 bth["history"].shift();
             }
+            
+            if (bth["historyNoteId"] == "") {
+                // Save history to local storage
+                localStorage.setItem("backToHistory", JSON.stringify(bth["history"]));
+            }
+            
             return;
         }
     });
@@ -174,8 +193,12 @@ window.addEventListener("resize", function () {
 
 
 window.onbeforeunload = function () { //Trigger saving history again when closing the browser
-    api.runAsyncOnBackendWithManualTransactionHandling(async (historyNoteId, history) => {
-        const historyNote = await api.getNote(historyNoteId);
-        historyNote.setContent(JSON.stringify(history));
-    }, [bth["historyNoteId"], bth["history"]]);
+    if (bth["historyNoteId"]==""){
+        localStorage.setItem("backToHistory", JSON.stringify(bth["history"]));
+    } else {
+        api.runAsyncOnBackendWithManualTransactionHandling(async (historyNoteId, history) => {
+            const historyNote = await api.getNote(historyNoteId);
+            historyNote.setContent(JSON.stringify(history));
+        }, [bth["historyNoteId"], bth["history"]]);
+    }
 };
